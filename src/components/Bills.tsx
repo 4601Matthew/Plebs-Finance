@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, X, Check } from 'lucide-react';
 import { api } from '../api';
 import { Bill } from '../types';
-import { format, parseISO, isPast, isToday } from 'date-fns';
+import { parseISO, isPast, isToday } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
 export default function Bills() {

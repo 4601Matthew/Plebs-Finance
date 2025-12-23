@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Upload, X, DollarSign } from 'lucide-react';
+import { Plus, Upload, X } from 'lucide-react';
 import { api } from '../api';
 import { CashflowEntry } from '../types';
 import { parseISO } from 'date-fns';
