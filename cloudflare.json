@@ -1,0 +1,18 @@
+{
+  "build": {
+    "command": "npm run build",
+    "cwd": ".",
+    "watch": []
+  },
+  "routes": [
+    {
+      "src": "/api/.*",
+      "dest": "/functions/api/[[path]].ts"
+    },
+    {
+      "src": ".*",
+      "dest": "/index.html"
+    }
+  ]
+}
+

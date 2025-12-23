@@ -1,0 +1,11 @@
+name = "plebs-finance"
+compatibility_date = "2024-01-01"
+
+[env.production]
+name = "plebs-finance"
+
+[[kv_namespaces]]
+binding = "FINANCE_KV"
+id = "97bd5d0c5f6a4c108eb7406dcf6f9f88"
+preview_id = "97bd5d0c5f6a4c108eb7406dcf6f9f88"
+
