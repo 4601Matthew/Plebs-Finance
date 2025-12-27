@@ -412,13 +412,35 @@ export async function onRequest(context: any) {
       
       // Find payment to delete
       console.log('[API DELETE] Searching for payment to delete...');
-      const paymentIndex = payments.findIndex((p: any) => 
-        p.id === paymentId && p.cardId === cardId && p.planId === planId
-      );
+      console.log('[API DELETE] Looking for payment with:', { paymentId, cardId, planId });
+      console.log('[API DELETE] All payments in KV:', JSON.stringify(payments, null, 2));
+      
+      const paymentIndex = payments.findIndex((p: any) => {
+        const matches = p.id === paymentId && p.cardId === cardId && p.planId === planId;
+        if (p.id === paymentId) {
+          console.log('[API DELETE] Found payment with matching ID:', { 
+            pId: p.id, 
+            pCardId: p.cardId, 
+            pPlanId: p.planId,
+            matchesCardId: p.cardId === cardId,
+            matchesPlanId: p.planId === planId,
+            matches: matches
+          });
+        }
+        return matches;
+      });
       console.log('[API DELETE] Payment index found:', paymentIndex);
       
       if (paymentIndex === -1) {
-        console.error('[API DELETE] Payment not found! Available payments:', payments.map((p: any) => ({ id: p.id, cardId: p.cardId, planId: p.planId })));
+        console.error('[API DELETE] Payment not found!');
+        console.error('[API DELETE] Available payments:', payments.map((p: any) => ({ 
+          id: p.id, 
+          cardId: p.cardId, 
+          planId: p.planId,
+          idMatch: p.id === paymentId,
+          cardIdMatch: p.cardId === cardId,
+          planIdMatch: p.planId === planId
+        })));
         return new Response(JSON.stringify({ error: 'Payment not found' }), { status: 404, headers });
       }
 

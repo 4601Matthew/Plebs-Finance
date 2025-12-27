@@ -32,7 +32,12 @@ export const api = {
   deleteCashflow: (id: string) => fetchAPI(`cashflow/${id}`, { method: 'DELETE' }),
   
   // Credit Cards
-  getCreditCards: () => fetchAPI('credit-cards'),
+  getCreditCards: async () => {
+    console.log('[API] getCreditCards called');
+    const result = await fetchAPI('credit-cards');
+    console.log('[API] getCreditCards result:', result.length, 'cards');
+    return result;
+  },
   addCreditCard: (card: any) => fetchAPI('credit-cards', { method: 'POST', body: JSON.stringify(card) }),
   updateCreditCard: (id: string, card: any) => fetchAPI(`credit-cards/${id}`, { method: 'PUT', body: JSON.stringify(card) }),
   deleteCreditCard: (id: string) => fetchAPI(`credit-cards/${id}`, { method: 'DELETE' }),

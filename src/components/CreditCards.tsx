@@ -37,12 +37,25 @@ export default function CreditCards() {
 
   const loadData = async () => {
     try {
+      console.log('[LOAD DATA] Fetching credit cards and profile...');
       const [cc, p] = await Promise.all([api.getCreditCards(), api.getProfile()]);
+      console.log('[LOAD DATA] Credit cards received:', cc.length);
+      
+      // Log payments for each plan
+      cc.forEach((card: any) => {
+        card.plans.forEach((plan: any) => {
+          if (plan.payments && plan.payments.length > 0) {
+            console.log(`[LOAD DATA] Card ${card.id}, Plan ${plan.id} has ${plan.payments.length} payments:`, plan.payments.map((p: any) => p.id));
+          }
+        });
+      });
+      
       // API now handles all normalization and payment calculation
       setCards(cc);
       setProfile(p);
+      console.log('[LOAD DATA] State updated');
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('[LOAD DATA] Failed to load data:', error);
     } finally {
       setLoading(false);
     }
@@ -281,18 +294,32 @@ export default function CreditCards() {
         await loadData();
         console.log('[DELETE PAYMENT] Data reloaded successfully');
         
-        // Verify the payment is gone
-        const card = cards.find((c) => c.id === cardId);
-        if (card) {
-          const plan = card.plans.find((p) => p.id === planId);
-          if (plan) {
-            const paymentStillExists = plan.payments?.some((p) => p.id === paymentId);
-            console.log('[DELETE PAYMENT] Payment still exists after reload?', paymentStillExists);
-            if (paymentStillExists) {
-              console.error('[DELETE PAYMENT] ERROR: Payment still exists after deletion and reload!');
+        // Verify by checking the fresh data from the API
+        setTimeout(async () => {
+          console.log('[DELETE PAYMENT] Verifying deletion by fetching fresh data...');
+          try {
+            const freshCards = await api.getCreditCards();
+            const card = freshCards.find((c: any) => c.id === cardId);
+            if (card) {
+              const plan = card.plans.find((p: any) => p.id === planId);
+              if (plan) {
+                const paymentStillExists = plan.payments?.some((p: any) => p.id === paymentId);
+                console.log('[DELETE PAYMENT] Payment still exists in fresh data?', paymentStillExists);
+                console.log('[DELETE PAYMENT] Plan payments in fresh data:', plan.payments?.map((p: any) => p.id));
+                if (paymentStillExists) {
+                  console.error('[DELETE PAYMENT] ERROR: Payment still exists after deletion!');
+                  console.error('[DELETE PAYMENT] This suggests the DELETE endpoint did not properly save to KV');
+                } else {
+                  console.log('[DELETE PAYMENT] SUCCESS: Payment successfully deleted and verified!');
+                  // Update state with fresh data
+                  setCards(freshCards);
+                }
+              }
             }
+          } catch (error) {
+            console.error('[DELETE PAYMENT] Error verifying deletion:', error);
           }
-        }
+        }, 300);
       } else {
         console.error('[DELETE PAYMENT] API returned unsuccessful result:', result);
         throw new Error('Delete failed - API returned unsuccessful result');
