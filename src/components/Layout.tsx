@@ -102,14 +102,15 @@ export default function Layout({ children, onLogout, currentUser }: LayoutProps)
             </div>
             <div className="flex items-center gap-2">
               {currentUser && (
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={handleUserMenuClick}
-                    className="flex items-center gap-2 text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium rounded-lg hover:bg-gray-100"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span className="hidden sm:inline">{currentUser.name || currentUser.username}</span>
-                  </button>
+                <>
+                  <div className="relative" ref={userMenuRef}>
+                    <button
+                      onClick={handleUserMenuClick}
+                      className="flex items-center gap-2 text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium rounded-lg hover:bg-gray-100"
+                    >
+                      <Users className="w-4 h-4" />
+                      <span className="hidden sm:inline">{currentUser.name || currentUser.username}</span>
+                    </button>
                   {showUserMenu && (
                     <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                       <div className="p-3 border-b border-gray-200">
@@ -149,7 +150,14 @@ export default function Layout({ children, onLogout, currentUser }: LayoutProps)
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                  <button
+                    onClick={onLogout}
+                    className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
+                  >
+                    Logout
+                  </button>
+                </>
               )}
             </div>
           </div>
