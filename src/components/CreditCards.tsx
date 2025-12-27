@@ -39,9 +39,9 @@ export default function CreditCards() {
       const [cc, p] = await Promise.all([api.getCreditCards(), api.getProfile()]);
       
       // Normalize cards data - ensure payments arrays exist and remainingBalance is set
-      const normalizedCards = cc.map((card) => ({
+      const normalizedCards = cc.map((card: CreditCardType) => ({
         ...card,
-        plans: (card.plans || []).map((plan) => ({
+        plans: (card.plans || []).map((plan: any) => ({
           ...plan,
           payments: plan.payments || [],
           remainingBalance: plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount,
