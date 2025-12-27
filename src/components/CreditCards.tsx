@@ -174,52 +174,59 @@ export default function CreditCards() {
   const handleDeletePayment = async (cardId: string, planId: string, paymentId: string) => {
     if (!confirm('Delete this payment? This will restore the amount to the remaining balance.')) return;
     
+    // Store original state for potential revert
+    const originalCards = JSON.parse(JSON.stringify(cards));
+    
+    // Find the payment to delete
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+    const plan = card.plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const payment = plan.payments?.find((p) => p.id === paymentId);
+    if (!payment) return;
+    
+    // Optimistically update UI
+    const updatedCards = cards.map((card) => {
+      if (card.id !== cardId) return card;
+      return {
+        ...card,
+        plans: card.plans.map((plan) => {
+          if (plan.id !== planId) return plan;
+          
+          const updatedPayments = (plan.payments || []).filter((p) => p.id !== paymentId);
+          const currentRemaining = plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount;
+          const newRemaining = Math.min(plan.amount, currentRemaining + payment.amount);
+          
+          // Recalculate weekly payment
+          const now = new Date();
+          const endDate = parseISO(plan.interestFreeEndDate);
+          const weeksLeft = differenceInWeeks(endDate, now);
+          let newWeeklyPayment = 0;
+          if (weeksLeft > 0 && newRemaining > 0) {
+            newWeeklyPayment = newRemaining / weeksLeft;
+          } else if (newRemaining > 0) {
+            newWeeklyPayment = newRemaining;
+          }
+          
+          return {
+            ...plan,
+            payments: updatedPayments,
+            remainingBalance: newRemaining,
+            weeklyPayment: newWeeklyPayment,
+          };
+        }),
+      };
+    });
+    
+    setCards(updatedCards);
+    
+    // Update on server - only revert if it fails
     try {
-      // Optimistically update UI
-      const updatedCards = cards.map((card) => {
-        if (card.id !== cardId) return card;
-        return {
-          ...card,
-          plans: card.plans.map((plan) => {
-            if (plan.id !== planId) return plan;
-            const payment = plan.payments?.find((p) => p.id === paymentId);
-            if (!payment) return plan;
-            
-            const updatedPayments = plan.payments.filter((p) => p.id !== paymentId);
-            const currentRemaining = plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount;
-            const newRemaining = Math.min(plan.amount, currentRemaining + payment.amount);
-            
-            // Recalculate weekly payment
-            const now = new Date();
-            const endDate = parseISO(plan.interestFreeEndDate);
-            const weeksLeft = differenceInWeeks(endDate, now);
-            let newWeeklyPayment = 0;
-            if (weeksLeft > 0 && newRemaining > 0) {
-              newWeeklyPayment = newRemaining / weeksLeft;
-            } else if (newRemaining > 0) {
-              newWeeklyPayment = newRemaining;
-            }
-            
-            return {
-              ...plan,
-              payments: updatedPayments,
-              remainingBalance: newRemaining,
-              weeklyPayment: newWeeklyPayment,
-            };
-          }),
-        };
-      });
-      
-      setCards(updatedCards);
-      
-      // Then update on server
       await api.deletePlanPayment(cardId, planId, paymentId);
-      
-      // Reload to ensure sync
-      loadData();
+      // Success - keep the optimistic update, no reload needed
     } catch (error) {
-      // Revert on error
-      loadData();
+      // If API call fails, revert the optimistic update
+      setCards(originalCards);
       alert('Failed to delete payment. Please try again.');
     }
   };
