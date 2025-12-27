@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Lock } from 'lucide-react';
 import { api } from '../api';
 
 interface LoginProps {
