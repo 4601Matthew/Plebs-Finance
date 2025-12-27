@@ -398,66 +398,42 @@ export async function onRequest(context: any) {
 
     // Delete payment endpoint
     if (path === 'credit-cards/payments' && method === 'DELETE') {
-      try {
-        const body = await request.json();
-        const { cardId, planId, paymentId } = body;
-        
-        if (!paymentId) {
-          return new Response(JSON.stringify({ error: 'Payment ID required' }), { status: 400, headers });
-        }
-        
-        // Get payments from separate storage
-        let paymentsData = await kv.get('plan-payments', 'json');
-        let payments = paymentsData ? JSON.parse(JSON.stringify(paymentsData)) : []; // Deep clone
-        
-        // Find payment to delete - must match payment ID (should be unique)
-        const initialCount = payments.length;
-        const paymentIndex = payments.findIndex((p: any) => p.id === paymentId);
-        
-        if (paymentIndex === -1) {
-          return new Response(JSON.stringify({ 
-            error: 'Payment not found',
-            debug: {
-              paymentId,
-              totalPayments: payments.length,
-              paymentIds: payments.map((p: any) => p.id)
-            }
-          }), { status: 404, headers });
-        }
-
-        // Remove payment from array using splice to be explicit
-        const paymentToDelete = payments[paymentIndex];
-        payments.splice(paymentIndex, 1);
-        
-        // Save updated payments back to KV
-        await kv.put('plan-payments', JSON.stringify(payments));
-        
-        // Verify it was saved by reading it back
-        const verifyData = await kv.get('plan-payments', 'json');
-        const verifyPayments = verifyData || [];
-        const stillExists = verifyPayments.some((p: any) => p.id === paymentId);
-        
-        // Return success with comprehensive debug info
+      const body = await request.json();
+      const { cardId, planId, paymentId } = body;
+      
+      // Get payments from separate storage
+      const paymentsData = await kv.get('plan-payments', 'json');
+      const payments = paymentsData || [];
+      
+      // Find payment to delete by ID only (IDs should be unique)
+      const paymentIndex = payments.findIndex((p: any) => String(p.id) === String(paymentId));
+      
+      if (paymentIndex === -1) {
         return new Response(JSON.stringify({ 
-          success: true,
-          deletedPaymentId: paymentId,
-          deletedPayment: paymentToDelete,
-          beforeCount: initialCount,
-          afterCount: payments.length,
-          remainingPaymentsCount: payments.length,
-          remainingPaymentIds: payments.map((p: any) => p.id),
-          verification: {
-            savedCount: verifyPayments.length,
-            stillExists: stillExists,
-            verifyPaymentIds: verifyPayments.map((p: any) => p.id)
-          }
-        }), { headers });
-      } catch (error: any) {
-        return new Response(JSON.stringify({ 
-          error: 'Failed to delete payment',
-          message: error?.message || 'Unknown error'
-        }), { status: 500, headers });
+          success: false,
+          error: 'Payment not found',
+          paymentId,
+          totalPayments: payments.length,
+          allPaymentIds: payments.map((p: any) => p.id)
+        }), { status: 404, headers });
       }
+
+      // Remove payment from array
+      const paymentToDelete = payments[paymentIndex];
+      const updatedPayments = payments.filter((p: any, idx: number) => idx !== paymentIndex);
+      
+      // Save updated payments back to KV
+      await kv.put('plan-payments', JSON.stringify(updatedPayments));
+      
+      // Return success with debug info - ALWAYS include this so we can see what happened
+      return new Response(JSON.stringify({ 
+        success: true,
+        deletedPaymentId: paymentId,
+        beforeCount: payments.length,
+        afterCount: updatedPayments.length,
+        remainingPaymentIds: updatedPayments.map((p: any) => p.id),
+        deletedPayment: paymentToDelete
+      }), { headers });
     }
 
     // Bank statement parsing endpoint
