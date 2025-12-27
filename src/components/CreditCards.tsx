@@ -154,20 +154,74 @@ export default function CreditCards() {
     e.preventDefault();
     if (!selectedCardId || !selectedPlanId) return;
 
+    const paymentAmount = parseFloat(paymentForm.amount);
+    const paymentDate = paymentForm.date;
+
+    // Store original state for potential revert
+    const originalCards = JSON.parse(JSON.stringify(cards));
+
+    // Find the plan
+    const card = cards.find((c) => c.id === selectedCardId);
+    if (!card) return;
+    const plan = card.plans.find((p) => p.id === selectedPlanId);
+    if (!plan) return;
+
+    // Create new payment object
+    const newPayment = {
+      id: Date.now().toString(),
+      amount: paymentAmount,
+      date: paymentDate,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistically update UI
+    const updatedCards = cards.map((card) => {
+      if (card.id !== selectedCardId) return card;
+      return {
+        ...card,
+        plans: card.plans.map((plan) => {
+          if (plan.id !== selectedPlanId) return plan;
+          
+          const currentPayments = plan.payments || [];
+          const updatedPayments = [...currentPayments, newPayment];
+          const currentRemaining = plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount;
+          const newRemaining = Math.max(0, currentRemaining - paymentAmount);
+          
+          // Recalculate weekly payment
+          const now = new Date();
+          const endDate = parseISO(plan.interestFreeEndDate);
+          const weeksLeft = differenceInWeeks(endDate, now);
+          let newWeeklyPayment = 0;
+          if (weeksLeft > 0 && newRemaining > 0) {
+            newWeeklyPayment = newRemaining / weeksLeft;
+          } else if (newRemaining > 0) {
+            newWeeklyPayment = newRemaining;
+          }
+          
+          return {
+            ...plan,
+            payments: updatedPayments,
+            remainingBalance: newRemaining,
+            weeklyPayment: newWeeklyPayment,
+          };
+        }),
+      };
+    });
+
+    setCards(updatedCards);
+    setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0] });
+    setShowPaymentModal(false);
+    setSelectedCardId(null);
+    setSelectedPlanId(null);
+
+    // Update on server - only revert if it fails
     try {
-      await api.addPlanPayment(
-        selectedCardId,
-        selectedPlanId,
-        parseFloat(paymentForm.amount),
-        paymentForm.date
-      );
-      setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0] });
-      setShowPaymentModal(false);
-      setSelectedCardId(null);
-      setSelectedPlanId(null);
-      loadData();
+      await api.addPlanPayment(selectedCardId, selectedPlanId, paymentAmount, paymentDate);
+      // Success - keep the optimistic update, no reload needed
     } catch (error) {
-      alert('Failed to add payment');
+      // If API call fails, revert the optimistic update
+      setCards(originalCards);
+      alert('Failed to add payment. Please try again.');
     }
   };
 

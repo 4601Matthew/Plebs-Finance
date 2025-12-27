@@ -375,9 +375,9 @@ export async function onRequest(context: any) {
         return new Response(JSON.stringify({ error: 'Plan not found' }), { status: 404, headers });
       }
 
-      const plan = cards[cardIndex].plans[planIndex];
+      const plan = { ...cards[cardIndex].plans[planIndex] };
       
-      if (!plan.payments) {
+      if (!plan.payments || plan.payments.length === 0) {
         return new Response(JSON.stringify({ error: 'No payments found' }), { status: 404, headers });
       }
 
@@ -388,8 +388,8 @@ export async function onRequest(context: any) {
 
       const deletedPayment = plan.payments[paymentIndex];
       
-      // Remove payment
-      plan.payments.splice(paymentIndex, 1);
+      // Remove payment - create new array without the deleted payment
+      plan.payments = plan.payments.filter((p: any) => p.id !== paymentId);
 
       // Recalculate remaining balance (add back the payment amount)
       if (plan.remainingBalance === undefined) {
