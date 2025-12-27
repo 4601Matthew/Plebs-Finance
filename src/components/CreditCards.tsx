@@ -219,7 +219,10 @@ export default function CreditCards() {
           </div>
         ) : (
           cards.map((card) => {
-            const cardTotal = card.plans.reduce((sum, plan) => sum + plan.amount, 0);
+            const cardTotal = card.plans.reduce((sum, plan) => {
+              const remaining = plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount;
+              return sum + remaining;
+            }, 0);
             const cardWeekly = card.plans.reduce((sum, plan) => sum + (plan.weeklyPayment || 0), 0);
 
             return (

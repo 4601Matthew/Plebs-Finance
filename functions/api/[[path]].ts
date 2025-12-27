@@ -337,6 +337,23 @@ export async function onRequest(context: any) {
       // Update remaining balance
       plan.remainingBalance = Math.max(0, plan.remainingBalance - payment.amount);
 
+      // Recalculate weekly payment based on remaining balance and time left
+      const now = new Date();
+      const endDate = new Date(plan.interestFreeEndDate);
+      const timeDiff = endDate.getTime() - now.getTime();
+      const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+      const weeksLeft = Math.ceil(daysLeft / 7);
+      
+      if (weeksLeft > 0 && plan.remainingBalance > 0) {
+        plan.weeklyPayment = plan.remainingBalance / weeksLeft;
+      } else if (plan.remainingBalance > 0) {
+        // If past due or less than a week, need to pay full amount
+        plan.weeklyPayment = plan.remainingBalance;
+      } else {
+        // Fully paid off
+        plan.weeklyPayment = 0;
+      }
+
       cards[cardIndex].plans[planIndex] = plan;
       await kv.put('credit-cards', JSON.stringify(cards));
 
