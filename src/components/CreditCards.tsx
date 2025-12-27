@@ -37,18 +37,8 @@ export default function CreditCards() {
   const loadData = async () => {
     try {
       const [cc, p] = await Promise.all([api.getCreditCards(), api.getProfile()]);
-      
-      // Normalize cards data - ensure payments arrays exist and remainingBalance is set
-      const normalizedCards = cc.map((card: CreditCardType) => ({
-        ...card,
-        plans: (card.plans || []).map((plan: any) => ({
-          ...plan,
-          payments: plan.payments || [],
-          remainingBalance: plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount,
-        })),
-      }));
-      
-      setCards(normalizedCards);
+      // API now handles all normalization and payment calculation
+      setCards(cc);
       setProfile(p);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -164,7 +154,9 @@ export default function CreditCards() {
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCardId || !selectedPlanId) return;
+    if (!selectedCardId || !selectedPlanId || !paymentForm.amount) return;
+    if (isAddingPayment) return; // Prevent double-clicks
+    setIsAddingPayment(true);
 
     const paymentAmount = parseFloat(paymentForm.amount);
     const paymentDate = paymentForm.date;
@@ -174,19 +166,25 @@ export default function CreditCards() {
 
     // Find the plan
     const card = cards.find((c) => c.id === selectedCardId);
-    if (!card) return;
+    if (!card) {
+      setIsAddingPayment(false);
+      return;
+    }
     const plan = card.plans.find((p) => p.id === selectedPlanId);
-    if (!plan) return;
+    if (!plan) {
+      setIsAddingPayment(false);
+      return;
+    }
 
-    // Create new payment object
+    // Create new payment object for optimistic update
     const newPayment = {
-      id: Date.now().toString(),
+      id: `temp_${Date.now()}`,
       amount: paymentAmount,
       date: paymentDate,
       createdAt: new Date().toISOString(),
     };
 
-    // Optimistically update UI
+    // Optimistically update UI - add payment and recalculate
     const updatedCards = cards.map((card) => {
       if (card.id !== selectedCardId) return card;
       return {
@@ -226,14 +224,17 @@ export default function CreditCards() {
     setSelectedCardId(null);
     setSelectedPlanId(null);
 
-    // Update on server - only revert if it fails
+    // Update on server - reload to get correct data from API
     try {
       await api.addPlanPayment(selectedCardId, selectedPlanId, paymentAmount, paymentDate);
-      // Success - keep the optimistic update, no reload needed
+      // Reload to get the correct payment ID and calculated values from API
+      await loadData();
     } catch (error) {
       // If API call fails, revert the optimistic update
       setCards(originalCards);
       alert('Failed to add payment. Please try again.');
+    } finally {
+      setIsAddingPayment(false);
     }
   };
 
@@ -298,16 +299,11 @@ export default function CreditCards() {
     
     setCards(updatedCards);
     
-    // Update on server - wait for it to complete
+    // Update on server - reload to get correct data from API
     try {
-      const result = await api.deletePlanPayment(cardId, planId, paymentId);
-      
-      // If API returns updated card, use it to ensure sync with KV
-      if (result && result.card) {
-        const syncedCards = cards.map((c) => c.id === result.card.id ? result.card : c);
-        setCards(syncedCards);
-      }
-      // Don't reload - trust the API response or our optimistic update
+      await api.deletePlanPayment(cardId, planId, paymentId);
+      // Reload to get the correct calculated values from API
+      await loadData();
     } catch (error) {
       // If API call fails, revert the optimistic update
       setCards(originalCards);

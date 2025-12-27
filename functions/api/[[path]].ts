@@ -107,14 +107,42 @@ export async function onRequest(context: any) {
       const cardsData = await kv.get('credit-cards', 'json');
       const cards = cardsData || [];
       
-      // Normalize data - ensure all plans have payments array and remainingBalance
+      // Get all payments from separate storage
+      const allPaymentsData = await kv.get('plan-payments', 'json');
+      const allPayments = allPaymentsData || [];
+      
+      // Normalize data - attach payments from separate storage and calculate balances
       const normalizedCards = cards.map((card: any) => ({
         ...card,
-        plans: (card.plans || []).map((plan: any) => ({
-          ...plan,
-          payments: plan.payments || [],
-          remainingBalance: plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount,
-        })),
+        plans: (card.plans || []).map((plan: any) => {
+          // Get payments for this plan
+          const planPayments = allPayments.filter((p: any) => p.planId === plan.id && p.cardId === card.id);
+          
+          // Calculate remaining balance from payments
+          const totalPaid = planPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+          const remainingBalance = Math.max(0, plan.amount - totalPaid);
+          
+          // Calculate weekly payment
+          const now = new Date();
+          const endDate = new Date(plan.interestFreeEndDate);
+          const timeDiff = endDate.getTime() - now.getTime();
+          const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+          const weeksLeft = Math.ceil(daysLeft / 7);
+          
+          let weeklyPayment = 0;
+          if (weeksLeft > 0 && remainingBalance > 0) {
+            weeklyPayment = remainingBalance / weeksLeft;
+          } else if (remainingBalance > 0) {
+            weeklyPayment = remainingBalance;
+          }
+          
+          return {
+            ...plan,
+            payments: planPayments,
+            remainingBalance,
+            weeklyPayment,
+          };
+        }),
       }));
       
       return new Response(JSON.stringify(normalizedCards), { headers });
@@ -327,72 +355,36 @@ export async function onRequest(context: any) {
     // Plan payment endpoints
     if (path === 'credit-cards/payments' && method === 'POST') {
       const { cardId, planId, amount, date } = await request.json();
+      
+      // Verify card and plan exist
       const cardsData = await kv.get('credit-cards', 'json');
-      const cards = cardsData ? JSON.parse(JSON.stringify(cardsData)) : []; // Deep clone
-      
-      const cardIndex = cards.findIndex((c: any) => c.id === cardId);
-      
-      if (cardIndex === -1) {
+      const cards = cardsData || [];
+      const card = cards.find((c: any) => c.id === cardId);
+      if (!card) {
         return new Response(JSON.stringify({ error: 'Card not found' }), { status: 404, headers });
       }
-
-      const planIndex = cards[cardIndex].plans.findIndex((p: any) => p.id === planId);
-      if (planIndex === -1) {
+      const plan = card.plans.find((p: any) => p.id === planId);
+      if (!plan) {
         return new Response(JSON.stringify({ error: 'Plan not found' }), { status: 404, headers });
       }
 
-      const originalPlan = cards[cardIndex].plans[planIndex];
-      
-      // Initialize payments array if it doesn't exist
-      const currentPayments = originalPlan.payments || [];
-      const currentRemaining = originalPlan.remainingBalance !== undefined ? originalPlan.remainingBalance : originalPlan.amount;
-
-      // Add payment
+      // Create payment and store separately
       const payment = {
-        id: Date.now().toString(),
+        id: `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        cardId,
+        planId,
         amount: parseFloat(amount),
         date: date || new Date().toISOString().split('T')[0],
         createdAt: new Date().toISOString(),
       };
 
-      // Create updated plan with new payment
-      const updatedPlan = {
-        ...originalPlan,
-        payments: [...currentPayments, payment],
-        remainingBalance: Math.max(0, currentRemaining - payment.amount),
-      };
-
-      // Recalculate weekly payment based on remaining balance and time left
-      const now = new Date();
-      const endDate = new Date(updatedPlan.interestFreeEndDate);
-      const timeDiff = endDate.getTime() - now.getTime();
-      const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-      const weeksLeft = Math.ceil(daysLeft / 7);
+      // Get existing payments and add new one
+      const paymentsData = await kv.get('plan-payments', 'json');
+      const payments = paymentsData || [];
+      payments.push(payment);
       
-      if (weeksLeft > 0 && updatedPlan.remainingBalance > 0) {
-        updatedPlan.weeklyPayment = updatedPlan.remainingBalance / weeksLeft;
-      } else if (updatedPlan.remainingBalance > 0) {
-        // If past due or less than a week, need to pay full amount
-        updatedPlan.weeklyPayment = updatedPlan.remainingBalance;
-      } else {
-        // Fully paid off
-        updatedPlan.weeklyPayment = 0;
-      }
-
-      // Create new cards array with updated plan
-      const updatedCards = cards.map((card: any, idx: number) => {
-        if (idx !== cardIndex) return card;
-        return {
-          ...card,
-          plans: card.plans.map((plan: any, pIdx: number) => {
-            if (pIdx !== planIndex) return plan;
-            return updatedPlan;
-          }),
-        };
-      });
-
-      // Save to KV
-      await kv.put('credit-cards', JSON.stringify(updatedCards));
+      // Save payments to separate KV key
+      await kv.put('plan-payments', JSON.stringify(payments));
 
       return new Response(JSON.stringify(payment), { headers });
     }
@@ -401,86 +393,26 @@ export async function onRequest(context: any) {
     if (path === 'credit-cards/payments' && method === 'DELETE') {
       const { cardId, planId, paymentId } = await request.json();
       
-      // Get fresh data from KV
-      const cardsData = await kv.get('credit-cards', 'json');
-      if (!cardsData) {
-        return new Response(JSON.stringify({ error: 'No credit cards found' }), { status: 404, headers });
-      }
+      // Get payments from separate storage
+      const paymentsData = await kv.get('plan-payments', 'json');
+      const payments = paymentsData || [];
       
-      // Deep clone to avoid mutations
-      const cards = JSON.parse(JSON.stringify(cardsData));
+      // Find payment to delete
+      const paymentIndex = payments.findIndex((p: any) => 
+        p.id === paymentId && p.cardId === cardId && p.planId === planId
+      );
       
-      const cardIndex = cards.findIndex((c: any) => c.id === cardId);
-      if (cardIndex === -1) {
-        return new Response(JSON.stringify({ error: 'Card not found' }), { status: 404, headers });
-      }
-
-      const planIndex = cards[cardIndex].plans.findIndex((p: any) => p.id === planId);
-      if (planIndex === -1) {
-        return new Response(JSON.stringify({ error: 'Plan not found' }), { status: 404, headers });
-      }
-
-      const originalPlan = cards[cardIndex].plans[planIndex];
-      
-      // Ensure payments array exists
-      if (!originalPlan.payments || !Array.isArray(originalPlan.payments)) {
-        return new Response(JSON.stringify({ error: 'No payments found' }), { status: 404, headers });
-      }
-
-      const paymentToDelete = originalPlan.payments.find((p: any) => p.id === paymentId);
-      if (!paymentToDelete) {
+      if (paymentIndex === -1) {
         return new Response(JSON.stringify({ error: 'Payment not found' }), { status: 404, headers });
       }
 
-      // Create completely new structure - no mutations
-      const updatedPayments = originalPlan.payments.filter((p: any) => p.id !== paymentId);
+      // Remove payment from array
+      const updatedPayments = payments.filter((p: any) => p.id !== paymentId);
       
-      const currentRemaining = originalPlan.remainingBalance !== undefined 
-        ? originalPlan.remainingBalance 
-        : originalPlan.amount;
+      // Save updated payments back to KV
+      await kv.put('plan-payments', JSON.stringify(updatedPayments));
       
-      const newRemaining = Math.min(originalPlan.amount, currentRemaining + paymentToDelete.amount);
-
-      // Recalculate weekly payment
-      const now = new Date();
-      const endDate = new Date(originalPlan.interestFreeEndDate);
-      const timeDiff = endDate.getTime() - now.getTime();
-      const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-      const weeksLeft = Math.ceil(daysLeft / 7);
-      
-      let newWeeklyPayment = 0;
-      if (weeksLeft > 0 && newRemaining > 0) {
-        newWeeklyPayment = newRemaining / weeksLeft;
-      } else if (newRemaining > 0) {
-        newWeeklyPayment = newRemaining;
-      }
-
-      // Create new plan object
-      const updatedPlan = {
-        ...originalPlan,
-        payments: updatedPayments,
-        remainingBalance: newRemaining,
-        weeklyPayment: newWeeklyPayment,
-      };
-
-      // Create new cards array
-      const updatedCards = cards.map((card: any) => {
-        if (card.id !== cardId) return card;
-        return {
-          ...card,
-          plans: card.plans.map((plan: any) => {
-            if (plan.id !== planId) return plan;
-            return updatedPlan;
-          }),
-        };
-      });
-
-      // Save to KV - ensure it's saved
-      await kv.put('credit-cards', JSON.stringify(updatedCards));
-      
-      // Return the updated card so frontend can sync
-      const updatedCard = updatedCards[cardIndex];
-      return new Response(JSON.stringify({ success: true, card: updatedCard }), { headers });
+      return new Response(JSON.stringify({ success: true }), { headers });
     }
 
     // Bank statement parsing endpoint
