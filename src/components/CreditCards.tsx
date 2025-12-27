@@ -239,75 +239,30 @@ export default function CreditCards() {
     }
   };
 
-  const handleDeletePayment = async (cardId: string, planId: string, paymentId: string) => {
+  const handleDeletePayment = async (cardId: string, planId: string, paymentId: string, e?: React.MouseEvent) => {
+    // Stop event propagation to prevent any parent handlers
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    
     if (!confirm('Delete this payment? This will restore the amount to the remaining balance.')) return;
     
     if (isDeletingPayment) return; // Prevent double-clicks
     setIsDeletingPayment(true);
     
-    // Store original state for potential revert
-    const originalCards = JSON.parse(JSON.stringify(cards));
-    
-    // Find the payment to delete
-    const card = cards.find((c) => c.id === cardId);
-    if (!card) {
-      setIsDeletingPayment(false);
-      return;
-    }
-    const plan = card.plans.find((p) => p.id === planId);
-    if (!plan) {
-      setIsDeletingPayment(false);
-      return;
-    }
-    const payment = plan.payments?.find((p) => p.id === paymentId);
-    if (!payment) {
-      setIsDeletingPayment(false);
-      return;
-    }
-    
-    // Optimistically update UI immediately
-    const updatedCards = cards.map((card) => {
-      if (card.id !== cardId) return card;
-      return {
-        ...card,
-        plans: card.plans.map((plan) => {
-          if (plan.id !== planId) return plan;
-          
-          const updatedPayments = (plan.payments || []).filter((p) => p.id !== paymentId);
-          const currentRemaining = plan.remainingBalance !== undefined ? plan.remainingBalance : plan.amount;
-          const newRemaining = Math.min(plan.amount, currentRemaining + payment.amount);
-          
-          // Recalculate weekly payment
-          const now = new Date();
-          const endDate = parseISO(plan.interestFreeEndDate);
-          const weeksLeft = differenceInWeeks(endDate, now);
-          let newWeeklyPayment = 0;
-          if (weeksLeft > 0 && newRemaining > 0) {
-            newWeeklyPayment = newRemaining / weeksLeft;
-          } else if (newRemaining > 0) {
-            newWeeklyPayment = newRemaining;
-          }
-          
-          return {
-            ...plan,
-            payments: updatedPayments,
-            remainingBalance: newRemaining,
-            weeklyPayment: newWeeklyPayment,
-          };
-        }),
-      };
-    });
-    
-    setCards(updatedCards);
-    
-    // Update on server - reload to get correct data from API
     try {
-      await api.deletePlanPayment(cardId, planId, paymentId);
-      // Reload to get the correct calculated values from API
-      await loadData();
+      // Call API immediately - wait for it to complete and save to KV
+      const result = await api.deletePlanPayment(cardId, planId, paymentId);
+      
+      if (result && result.success) {
+        // After successful API call, reload data to get updated state from KV
+        await loadData();
+      } else {
+        throw new Error('Delete failed');
+      }
     } catch (error) {
-      // If API call fails, revert the optimistic update
-      setCards(originalCards);
+      console.error('Failed to delete payment:', error);
       alert('Failed to delete payment. Please try again.');
     } finally {
       setIsDeletingPayment(false);
@@ -449,7 +404,7 @@ export default function CreditCards() {
                                                   onClick={(e) => {
                                                     e.stopPropagation();
                                                     e.preventDefault();
-                                                    handleDeletePayment(card.id, plan.id, payment.id);
+                                                    handleDeletePayment(card.id, plan.id, payment.id, e);
                                                   }}
                                                   className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition-colors"
                                                   title="Delete payment"
@@ -551,7 +506,7 @@ export default function CreditCards() {
                                                         onClick={(e) => {
                                                           e.stopPropagation();
                                                           e.preventDefault();
-                                                          handleDeletePayment(card.id, plan.id, payment.id);
+                                                          handleDeletePayment(card.id, plan.id, payment.id, e);
                                                         }}
                                                         className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition-colors"
                                                         title="Delete payment"
