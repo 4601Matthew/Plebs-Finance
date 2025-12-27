@@ -26,8 +26,7 @@ export default function Layout({ children, onLogout }: LayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
-              <div className="flex-shrink-0 flex items-center gap-3">
-                <img src="/logo.svg" alt="Port42 Developments" className="h-10 w-auto" />
+              <div className="flex-shrink-0 flex items-center">
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
                   Plebs Finance
                 </h1>
@@ -92,15 +91,27 @@ export default function Layout({ children, onLogout }: LayoutProps) {
           {children}
         </div>
       </main>
-      <footer className="bg-gray-50 border-t border-gray-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span>© {new Date().getFullYear()} Port42 Developments. All rights reserved.</span>
+      <footer className="bg-[#0F1216] border-t border-[#1a1f26] mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+            {/* Logo and Branding */}
+            <div className="flex items-center gap-4">
+              <img src="/logo.svg" alt="Port42 Developments" className="h-12 w-auto" />
+              <div className="h-12 w-px bg-[#8A94A6] opacity-30"></div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-white">Plebs Finance</span>
+                <span className="text-xs text-[#8A94A6]">Developed by Port42 Developments</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Port42 Developments" className="h-6 w-auto opacity-60" />
-              <span className="text-xs text-gray-500">Developed by Port42 Developments</span>
+            
+            {/* Copyright */}
+            <div className="flex flex-col items-center md:items-end gap-1">
+              <span className="text-sm text-[#8A94A6]">
+                © {new Date().getFullYear()} Port42 Developments
+              </span>
+              <span className="text-xs text-[#8A94A6] opacity-70">
+                All rights reserved.
+              </span>
             </div>
           </div>
         </div>

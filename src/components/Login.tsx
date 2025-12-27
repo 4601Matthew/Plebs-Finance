@@ -102,10 +102,13 @@ export default function Login({ onLogin }: LoginProps) {
             </button>
           </p>
         )}
-        <div className="mt-6 pt-4 border-t border-gray-200">
-          <p className="text-xs text-center text-gray-400">
-            © {new Date().getFullYear()} Port42 Developments. All rights reserved.
-          </p>
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="flex flex-col items-center gap-3">
+            <img src="/logo.svg" alt="Port42 Developments" className="h-8 w-auto opacity-80" />
+            <p className="text-xs text-center text-gray-500">
+              © {new Date().getFullYear()} Port42 Developments. All rights reserved.
+            </p>
+          </div>
         </div>
       </div>
     </div>
