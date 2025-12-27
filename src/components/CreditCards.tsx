@@ -16,6 +16,7 @@ export default function CreditCards() {
   const [showPaidOffPlans, setShowPaidOffPlans] = useState<{ [key: string]: boolean }>({});
   const [loading, setLoading] = useState(true);
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+  const [isAddingPayment, setIsAddingPayment] = useState(false);
 
   const [cardForm, setCardForm] = useState({ name: '' });
   const [planForm, setPlanForm] = useState({
