@@ -1,3 +1,13 @@
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  picture: string;
+  currency: string;
+  timezone: string;
+  createdAt: string;
+}
+
 export interface UserProfile {
   name: string;
   picture: string;

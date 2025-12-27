@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { api } from '../api';
+import { User } from '../types';
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (user: User) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +20,13 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
     setLoading(true);
 
-    // If user is creating new PIN, require confirmation
+    if (!username.trim()) {
+      setError('Username is required');
+      setLoading(false);
+      return;
+    }
+
+    // If user is creating new account, require confirmation
     if (isNewUser) {
       if (pin.length < 4) {
         setError('PIN must be at least 4 digits');
@@ -29,19 +38,35 @@ export default function Login({ onLogin }: LoginProps) {
         setLoading(false);
         return;
       }
-    }
 
-    try {
-      const result = await api.verifyPin(pin);
-      if (result.success) {
-        onLogin();
-      } else {
-        setError(result.error || 'Invalid PIN');
+      try {
+        const result = await api.registerUser(username.trim(), pin, name.trim() || username.trim());
+        if (result.success && result.user) {
+          localStorage.setItem('currentUserId', result.user.id);
+          onLogin(result.user);
+        } else {
+          setError(result.error || 'Registration failed');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to register');
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to verify PIN');
-    } finally {
-      setLoading(false);
+    } else {
+      // Login existing user
+      try {
+        const result = await api.loginUser(username.trim(), pin);
+        if (result.success && result.user) {
+          localStorage.setItem('currentUserId', result.user.id);
+          onLogin(result.user);
+        } else {
+          setError(result.error || 'Invalid username or PIN');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to login');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -55,14 +80,31 @@ export default function Login({ onLogin }: LoginProps) {
           Plebs Finance
         </h1>
         <p className="text-center text-gray-600 mb-2">
-          {isNewUser ? 'Welcome! Create your PIN' : 'Enter your PIN to continue'}
+          {isNewUser ? 'Create a new account' : 'Login to your account'}
         </p>
         {!isNewUser && (
           <p className="text-center text-sm text-purple-600 mb-4 cursor-pointer hover:underline" onClick={() => setIsNewUser(true)}>
-            New user? Create a PIN
+            New user? Create an account
           </p>
         )}
         <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
+            autoFocus
+          />
+          {isNewUser && (
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name (optional)"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
+            />
+          )}
           <input
             type="password"
             value={pin}
@@ -70,7 +112,6 @@ export default function Login({ onLogin }: LoginProps) {
             placeholder={isNewUser ? "Create PIN (4-6 digits)" : "Enter PIN"}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl tracking-widest mb-4"
             maxLength={6}
-            autoFocus
           />
           {isNewUser && (
             <input
@@ -92,13 +133,13 @@ export default function Login({ onLogin }: LoginProps) {
             disabled={loading || pin.length < 4 || (isNewUser && confirmPin.length < 4)}
             className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? (isNewUser ? 'Creating...' : 'Verifying...') : (isNewUser ? 'Create PIN' : 'Login')}
+            {loading ? (isNewUser ? 'Creating...' : 'Logging in...') : (isNewUser ? 'Create Account' : 'Login')}
           </button>
         </form>
         {isNewUser && (
           <p className="text-sm text-gray-500 text-center mt-4">
             <button type="button" onClick={() => setIsNewUser(false)} className="text-purple-600 hover:underline">
-              Already have a PIN? Login
+              Already have an account? Login
             </button>
           </p>
         )}

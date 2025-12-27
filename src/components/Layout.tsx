@@ -1,13 +1,61 @@
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet } from 'lucide-react';
+import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, Users } from 'lucide-react';
+import { User as UserType } from '../types';
+import { api } from '../api';
 
 interface LayoutProps {
   children: React.ReactNode;
   onLogout: () => void;
+  currentUser: UserType | null;
 }
 
-export default function Layout({ children, onLogout }: LayoutProps) {
+export default function Layout({ children, onLogout, currentUser }: LayoutProps) {
   const location = useLocation();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
+  const loadUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const allUsers = await api.getUsers();
+      setUsers(allUsers);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleSwitchUser = async (user: UserType) => {
+    localStorage.setItem('currentUserId', user.id);
+    window.location.reload(); // Reload to refresh all data
+  };
+
+  const handleUserMenuClick = () => {
+    if (!showUserMenu) {
+      loadUsers();
+    }
+    setShowUserMenu(!showUserMenu);
+  };
 
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard' },
@@ -52,13 +100,57 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                 })}
               </div>
             </div>
-            <div className="flex items-center">
-              <button
-                onClick={onLogout}
-                className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
-              >
-                Logout
-              </button>
+            <div className="flex items-center gap-2">
+              {currentUser && (
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={handleUserMenuClick}
+                    className="flex items-center gap-2 text-gray-700 hover:text-gray-900 px-3 py-2 text-sm font-medium rounded-lg hover:bg-gray-100"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span className="hidden sm:inline">{currentUser.name || currentUser.username}</span>
+                  </button>
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                      <div className="p-3 border-b border-gray-200">
+                        <div className="text-sm font-semibold text-gray-900">Current User</div>
+                        <div className="text-xs text-gray-600">{currentUser.username}</div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {loadingUsers ? (
+                          <div className="p-3 text-sm text-gray-500 text-center">Loading users...</div>
+                        ) : users.length > 0 ? (
+                          <>
+                            <div className="p-2 text-xs font-semibold text-gray-500 uppercase">Switch User</div>
+                            {users.map((user) => (
+                              <button
+                                key={user.id}
+                                onClick={() => handleSwitchUser(user)}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                  user.id === currentUser.id ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                                }`}
+                              >
+                                <div className="font-medium">{user.name || user.username}</div>
+                                <div className="text-xs text-gray-500">@{user.username}</div>
+                              </button>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="p-3 text-sm text-gray-500 text-center">No other users</div>
+                        )}
+                      </div>
+                      <div className="p-2 border-t border-gray-200">
+                        <button
+                          onClick={onLogout}
+                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded"
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

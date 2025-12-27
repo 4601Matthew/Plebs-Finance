@@ -1,12 +1,25 @@
 const API_BASE = '/api';
 
+// Get current userId from localStorage
+const getUserId = (): string | null => {
+  return localStorage.getItem('currentUserId');
+};
+
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
+  const userId = getUserId();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  // Add userId to headers if available
+  if (userId) {
+    headers['X-User-Id'] = userId;
+  }
+  
   const response = await fetch(`${API_BASE}/${endpoint}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
   
   if (!response.ok) {
@@ -18,18 +31,37 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 }
 
 export const api = {
-  // Auth
+  // User Management
+  registerUser: (username: string, pin: string, name?: string) => 
+    fetchAPI('auth/register', { method: 'POST', body: JSON.stringify({ username, pin, name }) }),
+  loginUser: (username: string, pin: string) => 
+    fetchAPI('auth/login', { method: 'POST', body: JSON.stringify({ username, pin }) }),
+  getUsers: () => fetchAPI('users'),
+  
+  // Auth (legacy support)
   verifyPin: (pin: string) => fetchAPI('auth/verify', { method: 'POST', body: JSON.stringify({ pin }) }),
-  changePin: (oldPin: string, newPin: string) => fetchAPI('auth/change-pin', { method: 'POST', body: JSON.stringify({ oldPin, newPin }) }),
+  changePin: (oldPin: string, newPin: string) => {
+    const userId = getUserId();
+    return fetchAPI('auth/change-pin', { method: 'POST', body: JSON.stringify({ oldPin, newPin, userId }) });
+  },
   
   // Profile
   getProfile: () => fetchAPI('user/profile'),
-  updateProfile: (profile: any) => fetchAPI('user/profile', { method: 'POST', body: JSON.stringify(profile) }),
+  updateProfile: (profile: any) => {
+    const userId = getUserId();
+    return fetchAPI('user/profile', { method: 'POST', body: JSON.stringify({ ...profile, userId }) });
+  },
   
   // Cashflow
   getCashflow: () => fetchAPI('cashflow'),
-  addCashflow: (entry: any) => fetchAPI('cashflow', { method: 'POST', body: JSON.stringify(entry) }),
-  deleteCashflow: (id: string) => fetchAPI(`cashflow/${id}`, { method: 'DELETE' }),
+  addCashflow: (entry: any) => {
+    const userId = getUserId();
+    return fetchAPI('cashflow', { method: 'POST', body: JSON.stringify({ ...entry, userId }) });
+  },
+  deleteCashflow: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`cashflow/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Credit Cards
   getCreditCards: async () => {
@@ -38,25 +70,55 @@ export const api = {
     console.log('[API] getCreditCards result:', result.length, 'cards');
     return result;
   },
-  addCreditCard: (card: any) => fetchAPI('credit-cards', { method: 'POST', body: JSON.stringify(card) }),
-  updateCreditCard: (id: string, card: any) => fetchAPI(`credit-cards/${id}`, { method: 'PUT', body: JSON.stringify(card) }),
-  deleteCreditCard: (id: string) => fetchAPI(`credit-cards/${id}`, { method: 'DELETE' }),
+  addCreditCard: (card: any) => {
+    const userId = getUserId();
+    return fetchAPI('credit-cards', { method: 'POST', body: JSON.stringify({ ...card, userId }) });
+  },
+  updateCreditCard: (id: string, card: any) => {
+    const userId = getUserId();
+    return fetchAPI(`credit-cards/${id}`, { method: 'PUT', body: JSON.stringify({ ...card, userId }) });
+  },
+  deleteCreditCard: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`credit-cards/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Expenses
   getExpenses: () => fetchAPI('expenses'),
-  addExpense: (expense: any) => fetchAPI('expenses', { method: 'POST', body: JSON.stringify(expense) }),
-  deleteExpense: (id: string) => fetchAPI(`expenses/${id}`, { method: 'DELETE' }),
+  addExpense: (expense: any) => {
+    const userId = getUserId();
+    return fetchAPI('expenses', { method: 'POST', body: JSON.stringify({ ...expense, userId }) });
+  },
+  deleteExpense: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`expenses/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Bills
   getBills: () => fetchAPI('bills'),
-  addBill: (bill: any) => fetchAPI('bills', { method: 'POST', body: JSON.stringify(bill) }),
-  deleteBill: (id: string) => fetchAPI(`bills/${id}`, { method: 'DELETE' }),
+  addBill: (bill: any) => {
+    const userId = getUserId();
+    return fetchAPI('bills', { method: 'POST', body: JSON.stringify({ ...bill, userId }) });
+  },
+  deleteBill: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`bills/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Goals
   getGoals: () => fetchAPI('goals'),
-  addGoal: (goal: any) => fetchAPI('goals', { method: 'POST', body: JSON.stringify(goal) }),
-  updateGoal: (id: string, goal: any) => fetchAPI(`goals/${id}`, { method: 'PUT', body: JSON.stringify(goal) }),
-  deleteGoal: (id: string) => fetchAPI(`goals/${id}`, { method: 'DELETE' }),
+  addGoal: (goal: any) => {
+    const userId = getUserId();
+    return fetchAPI('goals', { method: 'POST', body: JSON.stringify({ ...goal, userId }) });
+  },
+  updateGoal: (id: string, goal: any) => {
+    const userId = getUserId();
+    return fetchAPI(`goals/${id}`, { method: 'PUT', body: JSON.stringify({ ...goal, userId }) });
+  },
+  deleteGoal: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`goals/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Bank Statement
   parseBankStatement: async (file: File) => {
@@ -72,26 +134,44 @@ export const api = {
   
   // Accounts
   getAccounts: () => fetchAPI('accounts'),
-  addAccount: (account: any) => fetchAPI('accounts', { method: 'POST', body: JSON.stringify(account) }),
-  updateAccount: (id: string, account: any) => fetchAPI(`accounts/${id}`, { method: 'PUT', body: JSON.stringify(account) }),
-  deleteAccount: (id: string) => fetchAPI(`accounts/${id}`, { method: 'DELETE' }),
+  addAccount: (account: any) => {
+    const userId = getUserId();
+    return fetchAPI('accounts', { method: 'POST', body: JSON.stringify({ ...account, userId }) });
+  },
+  updateAccount: (id: string, account: any) => {
+    const userId = getUserId();
+    return fetchAPI(`accounts/${id}`, { method: 'PUT', body: JSON.stringify({ ...account, userId }) });
+  },
+  deleteAccount: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`accounts/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
   
   // Account Transactions
-  addAccountTransaction: (transaction: any) => fetchAPI('accounts/transactions', { method: 'POST', body: JSON.stringify(transaction) }),
+  addAccountTransaction: (transaction: any) => {
+    const userId = getUserId();
+    return fetchAPI('accounts/transactions', { method: 'POST', body: JSON.stringify({ ...transaction, userId }) });
+  },
   getAccountTransactions: (accountId: string) => fetchAPI(`accounts/${accountId}/transactions`),
   
   // Plan Payments
-  addPlanPayment: (cardId: string, planId: string, amount: number, date?: string) => 
-    fetchAPI('credit-cards/payments', { method: 'POST', body: JSON.stringify({ cardId, planId, amount, date }) }),
+  addPlanPayment: (cardId: string, planId: string, amount: number, date?: string) => {
+    const userId = getUserId();
+    return fetchAPI('credit-cards/payments', { method: 'POST', body: JSON.stringify({ cardId, planId, amount, date, userId }) });
+  },
   deletePlanPayment: async (cardId: string, planId: string, paymentId: string) => {
+    const userId = getUserId();
     console.log('[API] deletePlanPayment called with:', { cardId, planId, paymentId });
     console.log('[API] Making DELETE request to:', `${API_BASE}/credit-cards/payments`);
     
     try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (userId) headers['X-User-Id'] = userId;
+      
       const response = await fetch(`${API_BASE}/credit-cards/payments`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, planId, paymentId }),
+        headers,
+        body: JSON.stringify({ cardId, planId, paymentId, userId }),
       });
       
       console.log('[API] Response status:', response.status, response.statusText);

@@ -10,22 +10,29 @@ import Bills from './components/Bills';
 import Goals from './components/Goals';
 import Profile from './components/Profile';
 import Layout from './components/Layout';
+import { User } from './types';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
+    const userId = localStorage.getItem('currentUserId');
     const authStatus = localStorage.getItem('isAuthenticated');
-    setIsAuthenticated(authStatus === 'true');
+    setIsAuthenticated(!!userId || authStatus === 'true');
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = (user: User) => {
     localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('currentUserId', user.id);
+    setCurrentUser(user);
     setIsAuthenticated(true);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('currentUserId');
+    setCurrentUser(null);
     setIsAuthenticated(false);
   };
 
@@ -43,7 +50,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Layout onLogout={handleLogout}>
+      <Layout onLogout={handleLogout} currentUser={currentUser}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/cashflow" element={<Cashflow />} />
