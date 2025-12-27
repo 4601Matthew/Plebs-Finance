@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, CreditCard as CreditCardIcon, Target, TrendingUp, TrendingDown, Wallet, Receipt, FileText, Calendar } from 'lucide-react';
+import { CreditCard as CreditCardIcon, Target, TrendingUp, TrendingDown, Wallet, Receipt, FileText, Calendar } from 'lucide-react';
 import { api } from '../api';
 import { CashflowEntry, CreditCard, Bill, Goal, Account, Expense } from '../types';
-import { parseISO, isPast, isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { parseISO, isPast, isToday, startOfMonth, endOfMonth } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
 export default function Dashboard() {
