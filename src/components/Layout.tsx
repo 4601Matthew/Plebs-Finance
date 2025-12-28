@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, Users, LogOut } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, LogOut } from 'lucide-react';
 import { User as UserType } from '../types';
 import { api } from '../api';
 
@@ -12,7 +12,6 @@ interface LayoutProps {
 
 export default function Layout({ children, onLogout, currentUser }: LayoutProps) {
   const location = useLocation();
-  const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [users, setUsers] = useState<UserType[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
