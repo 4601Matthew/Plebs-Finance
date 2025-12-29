@@ -200,5 +200,20 @@ export const api = {
       throw error;
     }
   },
+  
+  // Budgets
+  getBudgets: () => fetchAPI('budgets'),
+  addBudget: (budget: any) => {
+    const userId = getUserId();
+    return fetchAPI('budgets', { method: 'POST', body: JSON.stringify({ ...budget, userId }) });
+  },
+  updateBudget: (id: string, budget: any) => {
+    const userId = getUserId();
+    return fetchAPI(`budgets/${id}`, { method: 'PUT', body: JSON.stringify({ ...budget, userId }) });
+  },
+  deleteBudget: (id: string) => {
+    const userId = getUserId();
+    return fetchAPI(`budgets/${id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+  },
 };
 

@@ -8,6 +8,7 @@ import CreditCards from './components/CreditCards';
 import Expenses from './components/Expenses';
 import Bills from './components/Bills';
 import Goals from './components/Goals';
+import Budgets from './components/Budgets';
 import Profile from './components/Profile';
 import Layout from './components/Layout';
 import { User } from './types';
@@ -83,6 +84,7 @@ function App() {
           <Route path="/credit-cards" element={<CreditCards />} />
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/bills" element={<Bills />} />
+          <Route path="/budgets" element={<Budgets />} />
           <Route path="/goals" element={<Goals />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<Navigate to="/" replace />} />

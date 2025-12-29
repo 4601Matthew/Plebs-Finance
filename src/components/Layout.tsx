@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, LogOut } from 'lucide-react';
+import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, LogOut, PieChart } from 'lucide-react';
 import { User as UserType } from '../types';
 import { api } from '../api';
 
@@ -64,6 +64,7 @@ export default function Layout({ children, onLogout, currentUser }: LayoutProps)
     { path: '/credit-cards', icon: CreditCard, label: 'Credit Cards' },
     { path: '/expenses', icon: Receipt, label: 'Expenses' },
     { path: '/bills', icon: FileText, label: 'Bills' },
+    { path: '/budgets', icon: PieChart, label: 'Budgets' },
     { path: '/goals', icon: Target, label: 'Goals' },
     { path: '/profile', icon: User, label: 'Profile' },
   ];

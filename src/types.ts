@@ -98,3 +98,14 @@ export interface Goal {
   createdAt: string;
 }
 
+export interface Budget {
+  id: string;
+  name: string;
+  category?: string; // Optional category for grouping
+  amount: number;
+  period: 'weekly' | 'monthly' | 'yearly';
+  startDate: string;
+  endDate?: string; // Optional end date
+  createdAt: string;
+}
+

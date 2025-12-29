@@ -241,6 +241,11 @@ export async function onRequest(context: any) {
         await kv.put(getUserKey(userId, 'goals'), JSON.stringify(legacyGoals));
       }
 
+      const legacyBudgets = await kv.get('budgets', 'json') || [];
+      if (legacyBudgets.length > 0) {
+        await kv.put(getUserKey(userId, 'budgets'), JSON.stringify(legacyBudgets));
+      }
+
       // Add to users list
       users.push(newUser);
       await kv.put('users:list', JSON.stringify(users));
@@ -695,6 +700,52 @@ export async function onRequest(context: any) {
       const goals = (await kv.get(goalsKey, 'json')) || [];
       const filtered = goals.filter((g: any) => g.id !== id);
       await kv.put(goalsKey, JSON.stringify(filtered));
+      return new Response(JSON.stringify({ success: true }), { headers });
+    }
+
+    // Budgets endpoints
+    if (path === 'budgets' && method === 'GET') {
+      const userId = await getUserId(request);
+      const budgetsKey = userId ? getUserKey(userId, 'budgets') : 'budgets';
+      const budgets = await kv.get(budgetsKey, 'json') || [];
+      return new Response(JSON.stringify(budgets), { headers });
+    }
+
+    if (path === 'budgets' && method === 'POST') {
+      const body = await request.json();
+      const { userId, ...budget } = body;
+      const budgetsKey = userId ? getUserKey(userId, 'budgets') : 'budgets';
+      const budgets = (await kv.get(budgetsKey, 'json')) || [];
+      budget.id = Date.now().toString();
+      budget.createdAt = new Date().toISOString();
+      budgets.push(budget);
+      await kv.put(budgetsKey, JSON.stringify(budgets));
+      return new Response(JSON.stringify(budget), { headers });
+    }
+
+    if (path.startsWith('budgets/') && method === 'PUT') {
+      const id = path.split('/')[1];
+      const body = await request.json();
+      const { userId, ...updatedBudget } = body;
+      const budgetsKey = userId ? getUserKey(userId, 'budgets') : 'budgets';
+      const budgets = (await kv.get(budgetsKey, 'json')) || [];
+      const index = budgets.findIndex((b: any) => b.id === id);
+      if (index !== -1) {
+        budgets[index] = { ...budgets[index], ...updatedBudget };
+        await kv.put(budgetsKey, JSON.stringify(budgets));
+        return new Response(JSON.stringify(budgets[index]), { headers });
+      }
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers });
+    }
+
+    if (path.startsWith('budgets/') && method === 'DELETE') {
+      const id = path.split('/')[1];
+      const body = await request.json().catch(() => ({}));
+      const { userId } = body;
+      const budgetsKey = userId ? getUserKey(userId, 'budgets') : 'budgets';
+      const budgets = (await kv.get(budgetsKey, 'json')) || [];
+      const filtered = budgets.filter((b: any) => b.id !== id);
+      await kv.put(budgetsKey, JSON.stringify(filtered));
       return new Response(JSON.stringify({ success: true }), { headers });
     }
 
