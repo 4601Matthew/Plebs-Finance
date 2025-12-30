@@ -876,40 +876,69 @@ export async function onRequest(context: any) {
       const parseDate = (dateStr: string): string | null => {
         if (!dateStr) return null;
         
-        // Remove common separators and normalize
-        const cleaned = dateStr.trim().replace(/[,\s]+/g, ' ');
+        // Remove quotes, extra whitespace, and normalize
+        let cleaned = dateStr.trim()
+          .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
         
-        // Try ISO format (YYYY-MM-DD)
-        const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+        if (!cleaned) return null;
+        
+        // Try ISO format (YYYY-MM-DD or YYYY/MM/DD)
+        const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:\s|$)/);
         if (isoMatch) {
           const [, year, month, day] = isoMatch;
-          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        }
-        
-        // Try DD/MM/YYYY or MM/DD/YYYY
-        const slashMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
-        if (slashMatch) {
-          let [, part1, part2, year] = slashMatch;
-          // If year is 2 digits, assume 20XX
-          if (year.length === 2) year = '20' + year;
-          
-          // Try DD/MM/YYYY first (more common internationally)
-          const day = parseInt(part1);
-          const month = parseInt(part2);
-          if (day > 0 && day <= 31 && month > 0 && month <= 12) {
-            // If day > 12, it must be DD/MM
-            if (day > 12) {
-              return `${year}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`;
-            }
-            // Otherwise try MM/DD (US format)
-            return `${year}-${part1.padStart(2, '0')}-${part2.padStart(2, '0')}`;
+          const monthNum = parseInt(month);
+          const dayNum = parseInt(day);
+          if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
           }
         }
         
-        // Try text dates (e.g., "Jan 15, 2024", "15 Jan 2024")
+        // Try DD/MM/YYYY or MM/DD/YYYY (with various separators)
+        const slashMatch = cleaned.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})(?:\s|$)/);
+        if (slashMatch) {
+          let [, part1, part2, year] = slashMatch;
+          const num1 = parseInt(part1);
+          const num2 = parseInt(part2);
+          
+          // If year is 2 digits, assume 20XX
+          if (year.length === 2) {
+            const yearNum = parseInt(year);
+            year = yearNum > 50 ? '19' + year : '20' + year; // Handle 1950-2050 range
+          }
+          
+          // Validate ranges
+          if (num1 > 0 && num1 <= 31 && num2 > 0 && num2 <= 12) {
+            // If first part > 12, it must be DD/MM/YYYY
+            if (num1 > 12) {
+              return `${year}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`;
+            }
+            // If second part > 12, it must be MM/DD/YYYY
+            if (num2 > 12) {
+              return `${year}-${part1.padStart(2, '0')}-${part2.padStart(2, '0')}`;
+            }
+            // Ambiguous case - try both and validate
+            // Try DD/MM first (more common internationally)
+            const tryDDMM = new Date(`${year}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`);
+            if (!isNaN(tryDDMM.getTime()) && tryDDMM.getDate() === num1 && tryDDMM.getMonth() + 1 === num2) {
+              return `${year}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`;
+            }
+            // Try MM/DD
+            const tryMMDD = new Date(`${year}-${part1.padStart(2, '0')}-${part2.padStart(2, '0')}`);
+            if (!isNaN(tryMMDD.getTime()) && tryMMDD.getMonth() + 1 === num1 && tryMMDD.getDate() === num2) {
+              return `${year}-${part1.padStart(2, '0')}-${part2.padStart(2, '0')}`;
+            }
+            // Default to DD/MM if both are valid
+            return `${year}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`;
+          }
+        }
+        
+        // Try text dates (e.g., "Jan 15, 2024", "15 Jan 2024", "15-Jan-2024")
         const textDatePatterns = [
-          /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/i,
-          /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})/i,
+          /(\d{1,2})[-\s]+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s]+(\d{4})/i,
+          /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s]+(\d{1,2}),?[-\s]+(\d{4})/i,
+          /(\d{4})[-\s]+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s]+(\d{1,2})/i, // YYYY-MMM-DD
         ];
         
         const months: { [key: string]: string } = {
@@ -920,12 +949,58 @@ export async function onRequest(context: any) {
         for (const pattern of textDatePatterns) {
           const match = cleaned.match(pattern);
           if (match) {
-            const monthName = match[1] || match[2];
+            let monthName: string;
+            let day: string;
+            let year: string;
+            
+            if (match[1] && match[1].length === 4) {
+              // YYYY-MMM-DD format
+              year = match[1];
+              monthName = match[2];
+              day = match[3];
+            } else if (match[1] && /^\d+$/.test(match[1])) {
+              // DD-MMM-YYYY format
+              day = match[1];
+              monthName = match[2];
+              year = match[3];
+            } else {
+              // MMM-DD-YYYY format
+              monthName = match[1];
+              day = match[2];
+              year = match[3];
+            }
+            
             const monthNum = months[monthName.toLowerCase().substring(0, 3)];
             if (monthNum) {
-              const day = (match[2] || match[1]).padStart(2, '0');
-              const year = match[3];
-              return `${year}-${monthNum}-${day}`;
+              return `${year}-${monthNum}-${day.padStart(2, '0')}`;
+            }
+          }
+        }
+        
+        // Try JavaScript Date parsing as fallback
+        // Remove any time portion if present
+        const dateOnly = cleaned.split(/\s+/)[0];
+        const jsDate = new Date(dateOnly);
+        if (!isNaN(jsDate.getTime())) {
+          // Validate the date is reasonable (not year 1970 from invalid parse)
+          const year = jsDate.getFullYear();
+          if (year >= 1900 && year <= 2100) {
+            return jsDate.toISOString().split('T')[0];
+          }
+        }
+        
+        // Try parsing with common formats using Date constructor
+        const commonFormats = [
+          dateOnly.replace(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/, '$3-$2-$1'), // DD/MM/YYYY -> YYYY-MM-DD
+          dateOnly.replace(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/, '$1-$2-$3'), // YYYY/MM/DD -> YYYY-MM-DD
+        ];
+        
+        for (const format of commonFormats) {
+          const testDate = new Date(format);
+          if (!isNaN(testDate.getTime())) {
+            const year = testDate.getFullYear();
+            if (year >= 1900 && year <= 2100) {
+              return testDate.toISOString().split('T')[0];
             }
           }
         }
@@ -950,14 +1025,58 @@ export async function onRequest(context: any) {
         return isNegative ? -Math.abs(amount) : amount;
       };
 
+      // Helper to parse CSV line with proper quote handling
+      const parseCSVLine = (line: string, delimiter: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          const nextChar = line[i + 1];
+          
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              // Escaped quote
+              current += '"';
+              i++; // Skip next quote
+            } else {
+              // Toggle quote state
+              inQuotes = !inQuotes;
+            }
+          } else if (char === delimiter && !inQuotes) {
+            // End of field
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        
+        // Add last field
+        result.push(current.trim());
+        return result;
+      };
+
       // Helper to detect CSV delimiter
       const detectDelimiter = (line: string): string => {
         const delimiters = [',', '\t', ';', '|'];
         let maxCount = 0;
         let detectedDelimiter = ',';
         
+        // Count delimiters that are not inside quotes
         for (const delim of delimiters) {
-          const count = (line.match(new RegExp(`\\${delim}`, 'g')) || []).length;
+          let count = 0;
+          let inQuotes = false;
+          
+          for (let i = 0; i < line.length; i++) {
+            if (line[i] === '"') {
+              inQuotes = !inQuotes;
+            } else if (line[i] === delim && !inQuotes) {
+              count++;
+            }
+          }
+          
           if (count > maxCount) {
             maxCount = count;
             detectedDelimiter = delim;
@@ -1044,7 +1163,7 @@ export async function onRequest(context: any) {
         // Detect if first line is headers
         const firstLine = lines[0];
         const delimiter = detectDelimiter(firstLine);
-        const firstLineParts = firstLine.split(delimiter).map(p => p.trim());
+        const firstLineParts = parseCSVLine(firstLine, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
         
         // Check if first line looks like headers (contains common header words)
         const headerKeywords = ['date', 'description', 'amount', 'memo', 'transaction', 'balance'];
@@ -1067,7 +1186,7 @@ export async function onRequest(context: any) {
           // Plain text or CSV without headers - use pattern matching
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const parts = line.split(delimiter).map(p => p.trim());
+            const parts = parseCSVLine(line, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
             
             // Try to find date and amount in the line
             let dateFound: string | null = null;
@@ -1139,7 +1258,7 @@ export async function onRequest(context: any) {
             const line = lines[i];
             if (!line.trim()) continue;
             
-            const parts = line.split(delimiter).map(p => p.trim().replace(/^["']|["']$/g, ''));
+            const parts = parseCSVLine(line, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
             
             let dateStr: string | null = null;
             let amountStr: string | null = null;
