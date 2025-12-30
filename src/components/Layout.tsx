@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, DollarSign, CreditCard, Receipt, FileText, Target, User, Wallet, LogOut, PieChart } from 'lucide-react';
 import { User as UserType } from '../types';
-import { api } from '../api';
 
 interface LayoutProps {
   children: React.ReactNode;
