@@ -901,18 +901,19 @@ export async function onRequest(context: any) {
 
     // Advanced bank statement parsing endpoint
     if (path === 'bank-statement/parse' && method === 'POST') {
-      const formData = await request.formData();
-      const file = formData.get('file') as File;
-      
-      if (!file) {
-        return new Response(JSON.stringify({ error: 'No file provided' }), {
-          status: 400,
-          headers,
-        });
-      }
+      try {
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
+        
+        if (!file) {
+          return new Response(JSON.stringify({ error: 'No file provided' }), {
+            status: 400,
+            headers,
+          });
+        }
 
-      const fileName = file.name.toLowerCase();
-      const fileContent = await file.text();
+        const fileName = file.name.toLowerCase();
+        const fileContent = await file.text();
 
       // Helper function to parse various date formats
       const parseDate = (dateStr: string): string | null => {
@@ -1339,7 +1340,8 @@ export async function onRequest(context: any) {
               // Build description from non-date, non-amount, non-balance columns
               description = parts
                 .map((part, idx) => {
-                  if (idx === columns.date || idx === columns.amount || idx === columns.balance) return '';
+                  if (idx === columns.date || idx === columns.amount) return '';
+                  if (columns.balance !== undefined && idx === columns.balance) return '';
                   return part;
                 })
                 .filter(p => p)
@@ -1382,32 +1384,47 @@ export async function onRequest(context: any) {
       
       // If balance wasn't detected from a column, try to get it from the last transaction's balance
       // (some CSVs have balance as the last column but it's not clearly labeled)
-      if (detectedBalance === null && uniqueTransactions.length > 0) {
+      if (detectedBalance === null && uniqueTransactions.length > 0 && !fileName.endsWith('.ofx') && !fileName.endsWith('.qfx')) {
         // Try to find balance in the last line of the CSV
-        const lines = fileContent.split(/\r?\n/).filter(line => line.trim());
-        if (lines.length > 0) {
-          const lastLine = lines[lines.length - 1];
-          const delimiter = detectDelimiter(lastLine);
-          const lastParts = parseCSVLine(lastLine, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
-          
-          // Look for a number that could be a balance (usually larger than transaction amounts)
-          for (const part of lastParts) {
-            const parsed = parseAmount(part);
-            if (parsed !== null && Math.abs(parsed) > 0) {
-              // If it's a reasonable balance (not too small), use it
-              detectedBalance = parsed;
-              break;
+        try {
+          const csvLines = fileContent.split(/\r?\n/).filter(line => line.trim());
+          if (csvLines.length > 0) {
+            const lastLine = csvLines[csvLines.length - 1];
+            const delimiter = detectDelimiter(lastLine);
+            const lastParts = parseCSVLine(lastLine, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
+            
+            // Look for a number that could be a balance (usually larger than transaction amounts)
+            for (const part of lastParts) {
+              const parsed = parseAmount(part);
+              if (parsed !== null && Math.abs(parsed) > 0) {
+                // If it's a reasonable balance (not too small), use it
+                detectedBalance = parsed;
+                break;
+              }
             }
           }
+        } catch (error) {
+          // Silently fail if we can't parse the last line for balance
+          console.error('[API] Error extracting balance from last line:', error);
         }
       }
       
-      return new Response(JSON.stringify({ 
-        transactions: uniqueTransactions,
-        count: uniqueTransactions.length,
-        format: fileName.endsWith('.ofx') || fileName.endsWith('.qfx') ? 'OFX/QFX' : 'CSV/Text',
-        balance: detectedBalance !== null ? detectedBalance : undefined
-      }), { headers });
+        return new Response(JSON.stringify({ 
+          transactions: uniqueTransactions,
+          count: uniqueTransactions.length,
+          format: fileName.endsWith('.ofx') || fileName.endsWith('.qfx') ? 'OFX/QFX' : 'CSV/Text',
+          balance: detectedBalance !== null ? detectedBalance : undefined
+        }), { headers });
+      } catch (parseError: any) {
+        console.error('[API] Bank statement parse error:', parseError);
+        return new Response(JSON.stringify({ 
+          error: 'Failed to parse bank statement',
+          details: parseError.message || 'Unknown error'
+        }), {
+          status: 500,
+          headers,
+        });
+      }
     }
 
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers });
