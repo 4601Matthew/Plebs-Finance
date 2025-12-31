@@ -1129,12 +1129,13 @@ export async function onRequest(context: any) {
       };
 
       // Helper to find column indices
-      const findColumns = (headers: string[]): { date: number; description: number; amount: number; type?: number } => {
+      const findColumns = (headers: string[]): { date: number; description: number; amount: number; balance?: number; type?: number } => {
         const lowerHeaders = headers.map(h => h.toLowerCase().trim());
         
         const dateIndices = ['date', 'transaction date', 'posted date', 'value date', 'trans date'];
         const descIndices = ['description', 'memo', 'details', 'narration', 'payee', 'merchant', 'transaction', 'particulars'];
-        const amountIndices = ['amount', 'value', 'balance', 'transaction amount', 'debit', 'credit'];
+        const amountIndices = ['amount', 'transaction amount', 'debit', 'credit', 'value'];
+        const balanceIndices = ['balance', 'running balance', 'account balance', 'current balance', 'available balance'];
         const typeIndices = ['type', 'transaction type', 'debit/credit', 'dr/cr'];
         
         const findIndex = (keywords: string[]) => {
@@ -1145,10 +1146,21 @@ export async function onRequest(context: any) {
           return -1;
         };
         
+        // Find balance separately - prioritize balance-specific keywords
+        let balanceIndex = findIndex(balanceIndices);
+        // If no balance column found, check if 'balance' appears in amount indices but wasn't used
+        if (balanceIndex === -1) {
+          const balanceInAmount = lowerHeaders.findIndex(h => h.includes('balance') && !h.includes('transaction'));
+          if (balanceInAmount !== -1) {
+            balanceIndex = balanceInAmount;
+          }
+        }
+        
         return {
           date: findIndex(dateIndices),
           description: findIndex(descIndices),
           amount: findIndex(amountIndices),
+          balance: balanceIndex !== -1 ? balanceIndex : undefined,
           type: findIndex(typeIndices),
         };
       };
@@ -1214,11 +1226,12 @@ export async function onRequest(context: any) {
         );
         
         let startIndex = 0;
-        let columns: { date: number; description: number; amount: number; type?: number } = {
+        let columns: { date: number; description: number; amount: number; balance?: number; type?: number } = {
           date: -1,
           description: -1,
           amount: -1,
         };
+        let detectedBalance: number | null = null;
         
         if (hasHeaders && firstLineParts.length > 1) {
           // CSV with headers
@@ -1304,6 +1317,7 @@ export async function onRequest(context: any) {
             
             let dateStr: string | null = null;
             let amountStr: string | null = null;
+            let balanceStr: string | null = null;
             let description = '';
             
             if (columns.date !== -1 && parts[columns.date]) {
@@ -1314,13 +1328,18 @@ export async function onRequest(context: any) {
               amountStr = parts[columns.amount];
             }
             
+            // Extract balance if balance column exists
+            if (columns.balance !== undefined && columns.balance !== -1 && parts[columns.balance]) {
+              balanceStr = parts[columns.balance];
+            }
+            
             if (columns.description !== -1 && parts[columns.description]) {
               description = parts[columns.description];
             } else {
-              // Build description from non-date, non-amount columns
+              // Build description from non-date, non-amount, non-balance columns
               description = parts
                 .map((part, idx) => {
-                  if (idx === columns.date || idx === columns.amount) return '';
+                  if (idx === columns.date || idx === columns.amount || idx === columns.balance) return '';
                   return part;
                 })
                 .filter(p => p)
@@ -1336,6 +1355,14 @@ export async function onRequest(context: any) {
                   description: description || 'Bank transaction',
                   amount: amount,
                 });
+                
+                // If balance column exists, extract the most recent balance (last transaction)
+                if (balanceStr) {
+                  const balance = parseAmount(balanceStr);
+                  if (balance !== null) {
+                    detectedBalance = balance;
+                  }
+                }
               }
             }
           }
@@ -1353,10 +1380,33 @@ export async function onRequest(context: any) {
       
       uniqueTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
+      // If balance wasn't detected from a column, try to get it from the last transaction's balance
+      // (some CSVs have balance as the last column but it's not clearly labeled)
+      if (detectedBalance === null && uniqueTransactions.length > 0) {
+        // Try to find balance in the last line of the CSV
+        const lines = fileContent.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length > 0) {
+          const lastLine = lines[lines.length - 1];
+          const delimiter = detectDelimiter(lastLine);
+          const lastParts = parseCSVLine(lastLine, delimiter).map(p => p.replace(/^["']|["']$/g, '').trim());
+          
+          // Look for a number that could be a balance (usually larger than transaction amounts)
+          for (const part of lastParts) {
+            const parsed = parseAmount(part);
+            if (parsed !== null && Math.abs(parsed) > 0) {
+              // If it's a reasonable balance (not too small), use it
+              detectedBalance = parsed;
+              break;
+            }
+          }
+        }
+      }
+      
       return new Response(JSON.stringify({ 
         transactions: uniqueTransactions,
         count: uniqueTransactions.length,
-        format: fileName.endsWith('.ofx') || fileName.endsWith('.qfx') ? 'OFX/QFX' : 'CSV/Text'
+        format: fileName.endsWith('.ofx') || fileName.endsWith('.qfx') ? 'OFX/QFX' : 'CSV/Text',
+        balance: detectedBalance !== null ? detectedBalance : undefined
       }), { headers });
     }
 

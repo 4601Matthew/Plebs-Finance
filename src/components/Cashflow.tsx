@@ -23,6 +23,7 @@ export default function Cashflow() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [parsingFormat, setParsingFormat] = useState<string>('');
+  const [detectedBalance, setDetectedBalance] = useState<number | null>(null);
   const [editingEntry, setEditingEntry] = useState<CashflowEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [parsing, setParsing] = useState(false);
@@ -30,6 +31,7 @@ export default function Cashflow() {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all'); // 'all' or account ID
   const [importAccountId, setImportAccountId] = useState<string>(''); // Account for import
+  const [updateAccountBalance, setUpdateAccountBalance] = useState(false); // Whether to update account balance
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -160,6 +162,8 @@ export default function Cashflow() {
         
         setParsedTransactions(previewTransactions);
         setParsingFormat(result.format || 'CSV/Text');
+        setDetectedBalance(result.balance !== undefined ? result.balance : null);
+        setUpdateAccountBalance(false); // Reset checkbox
         setShowUploadModal(false);
         setShowPreviewModal(true);
       } else {
@@ -259,15 +263,38 @@ export default function Cashflow() {
       
       console.log(`[Cashflow] Import complete: ${imported} imported, ${failed} failed`);
       
+      // Update account balance if requested and balance was detected
+      if (updateAccountBalance && importAccountId && detectedBalance !== null) {
+        try {
+          const account = accounts.find(a => a.id === importAccountId);
+          if (account) {
+            console.log(`[Cashflow] Updating account balance for ${account.name} to ${detectedBalance}`);
+            await api.updateAccount(importAccountId, {
+              ...account,
+              balance: detectedBalance,
+            });
+            console.log(`[Cashflow] Account balance updated successfully`);
+          }
+        } catch (error: any) {
+          console.error('[Cashflow] Failed to update account balance:', error);
+          // Don't fail the import if balance update fails
+        }
+      }
+      
       setShowPreviewModal(false);
       setParsedTransactions([]);
       setImportAccountId('');
+      setDetectedBalance(null);
+      setUpdateAccountBalance(false);
       await loadData();
       
       if (failed > 0) {
         alert(`Imported ${imported} transaction${imported !== 1 ? 's' : ''}, but ${failed} failed:\n${errors.join('\n')}`);
       } else {
-        alert(`Successfully imported ${imported} transaction${imported !== 1 ? 's' : ''}`);
+        const balanceMsg = updateAccountBalance && detectedBalance !== null 
+          ? `\nAccount balance updated to ${formatCurrency(detectedBalance)}.`
+          : '';
+        alert(`Successfully imported ${imported} transaction${imported !== 1 ? 's' : ''}.${balanceMsg}`);
       }
     } catch (error: any) {
       console.error('[Cashflow] Import error:', error);
@@ -623,6 +650,8 @@ export default function Cashflow() {
                   setShowPreviewModal(false);
                   setParsedTransactions([]);
                   setImportAccountId('');
+                  setDetectedBalance(null);
+                  setUpdateAccountBalance(false);
                 }}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
@@ -639,25 +668,55 @@ export default function Cashflow() {
 
             {/* Account Selection for Import */}
             {accounts.length > 0 && (
-              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Assign all transactions to account: <span className="text-xs text-gray-500">(optional)</span>
-                </label>
-                <select
-                  value={importAccountId}
-                  onChange={(e) => setImportAccountId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">No Account (General)</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  All transactions in this import will be assigned to the selected account
-                </p>
+              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Assign all transactions to account: <span className="text-xs text-gray-500">(optional)</span>
+                  </label>
+                  <select
+                    value={importAccountId}
+                    onChange={(e) => setImportAccountId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">No Account (General)</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    All transactions in this import will be assigned to the selected account
+                  </p>
+                </div>
+                
+                {/* Balance Update Option */}
+                {detectedBalance !== null && importAccountId && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="update-balance"
+                        checked={updateAccountBalance}
+                        onChange={(e) => setUpdateAccountBalance(e.target.checked)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <label htmlFor="update-balance" className="block text-sm font-medium text-blue-800 dark:text-blue-300 cursor-pointer">
+                          Update account balance
+                        </label>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          Detected balance: <strong>{formatCurrency(detectedBalance)}</strong>
+                        </p>
+                        <p className="text-xs text-blue-600 dark:text-blue-400">
+                          {updateAccountBalance 
+                            ? `The account balance will be set to ${formatCurrency(detectedBalance)} after import.`
+                            : 'Check this to update the account balance to the detected value from the CSV.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -782,6 +841,8 @@ export default function Cashflow() {
                   setShowPreviewModal(false);
                   setParsedTransactions([]);
                   setImportAccountId('');
+                  setDetectedBalance(null);
+                  setUpdateAccountBalance(false);
                 }}
                 disabled={importing}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
