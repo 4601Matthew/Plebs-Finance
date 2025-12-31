@@ -902,20 +902,27 @@ export async function onRequest(context: any) {
     // Advanced bank statement parsing endpoint
     if (path === 'bank-statement/parse' && method === 'POST') {
       try {
+        console.log('[API] Starting bank statement parse');
         const formData = await request.formData();
         const file = formData.get('file') as File;
         
         if (!file) {
+          console.error('[API] No file provided');
           return new Response(JSON.stringify({ error: 'No file provided' }), {
             status: 400,
             headers,
           });
         }
 
+        console.log('[API] File received:', file.name, file.size, 'bytes');
         const fileName = file.name.toLowerCase();
         const fileContent = await file.text();
+        console.log('[API] File content read, length:', fileContent.length);
+        
+        // Store fileContent for later use in balance extraction
+        let csvFileContent = fileContent;
 
-      // Helper function to parse various date formats
+        // Helper function to parse various date formats
       const parseDate = (dateStr: string): string | null => {
         if (!dateStr) return null;
         
@@ -1168,8 +1175,10 @@ export async function onRequest(context: any) {
 
       let transactions: any[] = [];
 
+      console.log('[API] Detecting file format for:', fileName);
       // Detect file format and parse accordingly
       if (fileName.endsWith('.ofx') || fileName.endsWith('.qfx')) {
+        console.log('[API] Parsing OFX/QFX file');
         // OFX/QFX format parsing
         const stmtTrnRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
         const matches = fileContent.matchAll(stmtTrnRegex);
@@ -1206,9 +1215,12 @@ export async function onRequest(context: any) {
           }
         }
       } else {
+        console.log('[API] Parsing CSV/TSV/Text file');
         // CSV/TSV/Text format
-        const lines = fileContent.split(/\r?\n/).filter(line => line.trim());
+        const lines = csvFileContent.split(/\r?\n/).filter(line => line.trim());
+        console.log('[API] File has', lines.length, 'lines');
         if (lines.length === 0) {
+          console.error('[API] File is empty');
           return new Response(JSON.stringify({ error: 'File is empty' }), {
             status: 400,
             headers,
@@ -1387,7 +1399,7 @@ export async function onRequest(context: any) {
       if (detectedBalance === null && uniqueTransactions.length > 0 && !fileName.endsWith('.ofx') && !fileName.endsWith('.qfx')) {
         // Try to find balance in the last line of the CSV
         try {
-          const csvLines = fileContent.split(/\r?\n/).filter(line => line.trim());
+          const csvLines = csvFileContent.split(/\r?\n/).filter(line => line.trim());
           if (csvLines.length > 0) {
             const lastLine = csvLines[csvLines.length - 1];
             const delimiter = detectDelimiter(lastLine);
@@ -1409,6 +1421,7 @@ export async function onRequest(context: any) {
         }
       }
       
+      console.log('[API] Parsing complete. Transactions:', uniqueTransactions.length, 'Balance:', detectedBalance);
         return new Response(JSON.stringify({ 
           transactions: uniqueTransactions,
           count: uniqueTransactions.length,
@@ -1417,9 +1430,17 @@ export async function onRequest(context: any) {
         }), { headers });
       } catch (parseError: any) {
         console.error('[API] Bank statement parse error:', parseError);
+        console.error('[API] Error stack:', parseError.stack);
+        console.error('[API] Error details:', {
+          message: parseError.message,
+          name: parseError.name,
+          fileName: fileName,
+          fileSize: file?.size,
+        });
         return new Response(JSON.stringify({ 
           error: 'Failed to parse bank statement',
-          details: parseError.message || 'Unknown error'
+          details: parseError.message || 'Unknown error',
+          type: parseError.name || 'Error'
         }), {
           status: 500,
           headers,
