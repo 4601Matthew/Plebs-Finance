@@ -134,7 +134,10 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    if (!response.ok) throw new Error('Failed to parse statement');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to parse statement' }));
+      throw new Error(error.error || error.details || 'Failed to parse statement');
+    }
     return response.json();
   },
   

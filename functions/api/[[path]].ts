@@ -1330,18 +1330,18 @@ export async function onRequest(context: any) {
             }
             
             // Extract balance if balance column exists
-            if (columns.balance !== undefined && columns.balance !== -1 && parts[columns.balance]) {
+            if (columns.balance !== undefined && columns.balance !== -1 && columns.balance < parts.length && parts[columns.balance]) {
               balanceStr = parts[columns.balance];
             }
             
-            if (columns.description !== -1 && parts[columns.description]) {
+            if (columns.description !== -1 && columns.description < parts.length && parts[columns.description]) {
               description = parts[columns.description];
             } else {
               // Build description from non-date, non-amount, non-balance columns
               description = parts
                 .map((part, idx) => {
                   if (idx === columns.date || idx === columns.amount) return '';
-                  if (columns.balance !== undefined && idx === columns.balance) return '';
+                  if (columns.balance !== undefined && columns.balance !== -1 && idx === columns.balance) return '';
                   return part;
                 })
                 .filter(p => p)
