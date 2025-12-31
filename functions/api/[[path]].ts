@@ -921,6 +921,10 @@ export async function onRequest(context: any) {
         
         // Store fileContent for later use in balance extraction
         let csvFileContent = fileContent;
+        
+        // Initialize variables that will be used throughout parsing
+        let transactions: any[] = [];
+        let detectedBalance: number | null = null;
 
         // Helper function to parse various date formats
       const parseDate = (dateStr: string): string | null => {
@@ -1173,8 +1177,6 @@ export async function onRequest(context: any) {
         };
       };
 
-      let transactions: any[] = [];
-
       console.log('[API] Detecting file format for:', fileName);
       // Detect file format and parse accordingly
       if (fileName.endsWith('.ofx') || fileName.endsWith('.qfx')) {
@@ -1244,7 +1246,6 @@ export async function onRequest(context: any) {
           description: -1,
           amount: -1,
         };
-        let detectedBalance: number | null = null;
         
         if (hasHeaders && firstLineParts.length > 1) {
           // CSV with headers
@@ -1431,10 +1432,11 @@ export async function onRequest(context: any) {
       } catch (parseError: any) {
         console.error('[API] Bank statement parse error:', parseError);
         console.error('[API] Error stack:', parseError.stack);
+        const errorFileName = typeof file !== 'undefined' && file ? file.name : 'unknown';
         console.error('[API] Error details:', {
           message: parseError.message,
           name: parseError.name,
-          fileName: fileName,
+          fileName: errorFileName,
           fileSize: file?.size,
         });
         return new Response(JSON.stringify({ 
