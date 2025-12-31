@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, Upload, X, Tag, Edit2, Check, Trash2 } from 'lucide-react';
+import { Plus, Upload, X, Tag, Edit2, Check, Trash2, Filter } from 'lucide-react';
 import { api } from '../api';
-import { CashflowEntry } from '../types';
+import { CashflowEntry, Account } from '../types';
 import { parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -15,6 +15,7 @@ interface ParsedTransaction {
 
 export default function Cashflow() {
   const [cashflow, setCashflow] = useState<CashflowEntry[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>({ currency: 'NZD', timezone: 'Pacific/Auckland' });
   const [showAddModal, setShowAddModal] = useState(false);
@@ -27,6 +28,8 @@ export default function Cashflow() {
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all'); // 'all' or account ID
+  const [importAccountId, setImportAccountId] = useState<string>(''); // Account for import
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -34,6 +37,7 @@ export default function Cashflow() {
     amount: '',
     type: 'income' as 'income' | 'expense',
     category: '',
+    accountId: '',
   });
 
   useEffect(() => {
@@ -42,8 +46,9 @@ export default function Cashflow() {
 
   const loadData = async () => {
     try {
-      const [cf, b, p] = await Promise.all([api.getCashflow(), api.getBudgets(), api.getProfile()]);
+      const [cf, a, b, p] = await Promise.all([api.getCashflow(), api.getAccounts(), api.getBudgets(), api.getProfile()]);
       setCashflow(cf);
+      setAccounts(a);
       setBudgets(b);
       setProfile(p);
     } catch (error) {
@@ -75,6 +80,7 @@ export default function Cashflow() {
         ...formData,
         amount: parseFloat(formData.amount),
         category: formData.category || undefined,
+        accountId: formData.accountId || undefined,
       };
       
       if (editingEntry) {
@@ -91,6 +97,7 @@ export default function Cashflow() {
         amount: '',
         type: 'income',
         category: '',
+        accountId: '',
       });
       loadData();
     } catch (error) {
@@ -106,6 +113,7 @@ export default function Cashflow() {
       amount: entry.amount.toString(),
       type: entry.type,
       category: entry.category || '',
+      accountId: entry.accountId || '',
     });
     setShowAddModal(true);
   };
@@ -119,6 +127,7 @@ export default function Cashflow() {
       amount: '',
       type: 'income',
       category: '',
+      accountId: '',
     });
   };
 
@@ -233,6 +242,7 @@ export default function Cashflow() {
             amount: Math.abs(transaction.amount), // Ensure positive amount
             type: transaction.type || (transaction.amount >= 0 ? 'income' : 'expense'),
             category: transaction.category?.trim() || undefined,
+            accountId: importAccountId || undefined,
           };
           
           console.log(`[Cashflow] Sending entry data:`, entryData);
@@ -251,6 +261,7 @@ export default function Cashflow() {
       
       setShowPreviewModal(false);
       setParsedTransactions([]);
+      setImportAccountId('');
       await loadData();
       
       if (failed > 0) {
@@ -267,12 +278,24 @@ export default function Cashflow() {
     }
   };
 
-  const sortedCashflow = [...cashflow].sort(
+  // Filter cashflow by selected account
+  const filteredCashflow = selectedAccountId === 'all' 
+    ? cashflow 
+    : cashflow.filter(entry => entry.accountId === selectedAccountId);
+  
+  const sortedCashflow = [...filteredCashflow].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+  
+  // Get account name helper
+  const getAccountName = (accountId?: string) => {
+    if (!accountId) return null;
+    const account = accounts.find(a => a.id === accountId);
+    return account?.name || null;
+  };
 
-  const totalIncome = cashflow.filter((c) => c.type === 'income').reduce((sum, c) => sum + c.amount, 0);
-  const totalExpenses = cashflow.filter((c) => c.type === 'expense').reduce((sum, c) => sum + c.amount, 0);
+  const totalIncome = filteredCashflow.filter((c) => c.type === 'income').reduce((sum, c) => sum + c.amount, 0);
+  const totalExpenses = filteredCashflow.filter((c) => c.type === 'expense').reduce((sum, c) => sum + c.amount, 0);
 
   if (loading) {
     return <div className="text-center py-12 dark:text-white">Loading...</div>;
@@ -300,6 +323,28 @@ export default function Cashflow() {
         </div>
       </div>
 
+      {/* Account Filter */}
+      {accounts.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Account:</label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="px-3 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="all">All Accounts</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -326,6 +371,7 @@ export default function Cashflow() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Account</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount</th>
@@ -335,7 +381,7 @@ export default function Cashflow() {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {sortedCashflow.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                     No cashflow entries yet
                   </td>
                 </tr>
@@ -344,6 +390,15 @@ export default function Cashflow() {
                   <tr key={entry.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{formatDate(entry.date)}</td>
                     <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{entry.description}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getAccountName(entry.accountId) ? (
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                          {getAccountName(entry.accountId)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {entry.category ? (
                         <span className="px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 flex items-center gap-1">
@@ -424,6 +479,28 @@ export default function Cashflow() {
                   required
                 />
               </div>
+              {accounts.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Account <span className="text-xs text-gray-500">(optional)</span>
+                  </label>
+                  <select
+                    value={formData.accountId}
+                    onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">No Account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Associate this transaction with a specific account
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Category <span className="text-xs text-gray-500">(for budget tracking)</span>
@@ -545,6 +622,7 @@ export default function Cashflow() {
                 onClick={() => {
                   setShowPreviewModal(false);
                   setParsedTransactions([]);
+                  setImportAccountId('');
                 }}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
@@ -558,6 +636,30 @@ export default function Cashflow() {
                 Remove any transactions you don't want to import.
               </p>
             </div>
+
+            {/* Account Selection for Import */}
+            {accounts.length > 0 && (
+              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Assign all transactions to account: <span className="text-xs text-gray-500">(optional)</span>
+                </label>
+                <select
+                  value={importAccountId}
+                  onChange={(e) => setImportAccountId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">No Account (General)</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  All transactions in this import will be assigned to the selected account
+                </p>
+              </div>
+            )}
 
             <div className="max-h-96 overflow-y-auto mb-4">
               <table className="w-full text-sm">
@@ -679,6 +781,7 @@ export default function Cashflow() {
                 onClick={() => {
                   setShowPreviewModal(false);
                   setParsedTransactions([]);
+                  setImportAccountId('');
                 }}
                 disabled={importing}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"

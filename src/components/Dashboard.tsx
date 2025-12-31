@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { CreditCard as CreditCardIcon, Target, TrendingUp, TrendingDown, Wallet, Receipt, FileText, Calendar } from 'lucide-react';
 import { api } from '../api';
 import { CashflowEntry, CreditCard, Bill, Goal, Account, Expense } from '../types';
-import { parseISO, isPast, isToday, startOfMonth, endOfMonth } from 'date-fns';
+import { parseISO, isPast, isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subWeeks, addWeeks } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+
+type TimePeriod = 'weekly' | 'fortnightly' | 'monthly' | 'yearly';
 
 export default function Dashboard() {
   const [cashflow, setCashflow] = useState<CashflowEntry[]>([]);
@@ -14,6 +16,7 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [profile, setProfile] = useState<any>({ currency: 'NZD', timezone: 'Pacific/Auckland' });
   const [loading, setLoading] = useState(true);
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('monthly');
 
   useEffect(() => {
     loadData();
@@ -87,22 +90,47 @@ export default function Dashboard() {
   // Accounts
   const totalAccountBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
 
-  // Monthly calculations
+  // Time period calculations
   const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
-  const monthIncome = cashflow
+  let periodStart: Date;
+  let periodEnd: Date;
+  let periodLabel: string;
+
+  switch (timePeriod) {
+    case 'weekly':
+      periodStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+      periodEnd = endOfWeek(now, { weekStartsOn: 1 });
+      periodLabel = 'This Week';
+      break;
+    case 'fortnightly':
+      periodStart = startOfWeek(now, { weekStartsOn: 1 });
+      periodEnd = endOfWeek(addWeeks(periodStart, 1), { weekStartsOn: 1 });
+      periodLabel = 'This Fortnight';
+      break;
+    case 'monthly':
+      periodStart = startOfMonth(now);
+      periodEnd = endOfMonth(now);
+      periodLabel = 'This Month';
+      break;
+    case 'yearly':
+      periodStart = startOfYear(now);
+      periodEnd = endOfYear(now);
+      periodLabel = 'This Year';
+      break;
+  }
+
+  const periodIncome = cashflow
     .filter((c) => {
       if (c.type !== 'income') return false;
       const entryDate = parseISO(c.date);
-      return entryDate >= monthStart && entryDate <= monthEnd;
+      return entryDate >= periodStart && entryDate <= periodEnd;
     })
     .reduce((sum, c) => sum + c.amount, 0);
-  const monthExpenses = cashflow
+  const periodExpenses = cashflow
     .filter((c) => {
       if (c.type !== 'expense') return false;
       const entryDate = parseISO(c.date);
-      return entryDate >= monthStart && entryDate <= monthEnd;
+      return entryDate >= periodStart && entryDate <= periodEnd;
     })
     .reduce((sum, c) => sum + c.amount, 0);
 
@@ -134,7 +162,22 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">View:</label>
+          <select
+            value={timePeriod}
+            onChange={(e) => setTimePeriod(e.target.value as TimePeriod)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"
+          >
+            <option value="weekly">Weekly</option>
+            <option value="fortnightly">Fortnightly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </div>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -191,20 +234,20 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Monthly Overview */}
+      {/* Period Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center gap-2 mb-2">
             <Calendar className="w-5 h-5 text-purple-600" />
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">This Month</p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{periodLabel}</p>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400">Income</p>
-          <p className="text-xl font-bold text-green-600">{formatCurrency(monthIncome)}</p>
+          <p className="text-xl font-bold text-green-600">{formatCurrency(periodIncome)}</p>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">Expenses</p>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(monthExpenses)}</p>
+          <p className="text-xl font-bold text-red-600">{formatCurrency(periodExpenses)}</p>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">Net</p>
-          <p className={`text-lg font-bold ${monthIncome - monthExpenses >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {formatCurrency(monthIncome - monthExpenses)}
+          <p className={`text-lg font-bold ${periodIncome - periodExpenses >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {formatCurrency(periodIncome - periodExpenses)}
           </p>
         </div>
 

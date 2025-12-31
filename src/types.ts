@@ -23,6 +23,7 @@ export interface CashflowEntry {
   amount: number;
   type: 'income' | 'expense';
   category?: string; // Optional category for budget tracking
+  accountId?: string; // Optional account ID for tracking by account
   createdAt: string;
 }
 
